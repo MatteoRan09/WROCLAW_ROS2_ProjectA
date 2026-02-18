@@ -58,6 +58,9 @@ void setup() {
 void loop() {
 
   delay(1000);
-  char msg[16] = "ESP Bridge";
+  char msg[64] = "x_cmd=1.0,z_cmd=0.0";
   esp_now_send(peerMAC, (uint8_t*)msg, strlen(msg));
+  delay(500);
+  char msg_1[64] = "x_cmd=0.0,z_cmd=0.0";
+  esp_now_send(peerMAC, (uint8_t*)msg_1, strlen(msg));
 }
