@@ -1,0 +1,15 @@
+# --- ROS 2 Ignores ---
+install/
+build/
+log/
+.colcon/
+*.pyc
+
+# --- Arduino/PlatformIO Ignores ---
+.pio/
+*.hex
+*.elf
+*.bin
+
+# --- System ---
+.DS_Store
