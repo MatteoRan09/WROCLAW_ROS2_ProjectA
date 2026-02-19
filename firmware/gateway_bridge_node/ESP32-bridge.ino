@@ -26,7 +26,7 @@
 uint8_t peerMAC[6] = {0x28, 0x05, 0xA5, 0x27, 0x5E, 0x38};
 
 // ========== STRUCTS ==========
-// Must match the Sender's struct exactly!
+
 typedef struct {
   float x;
   float y;
@@ -44,7 +44,7 @@ typedef struct {
 // Declaration of the structs I will receive
 //"Reserve some memory space right now to hold these specific shapes of data."
 RobotState_t incomingRobotState; // Comes from ESP1
-RobotCommand_t outgoingCommand; // Comes from Agent
+RobotCommand_t outgoingCommand; // sent to ESP1
 
 // ========== ROS OBJECTS ==========
 
@@ -86,10 +86,13 @@ void OnDataSent(const wifi_tx_info_t* info, esp_now_send_status_t status) {
 // On Data Receive (From Robot)
 void OnDataRecv(const esp_now_recv_info* info, const unsigned char* incomingData, int len) {
   if (len != sizeof(RobotState_t)) return; // Safety check
+  float q;
+  float d_s;
  
   //Go to the memory address incomingData. Grab exactly sizeof(RobotState_t) bytes from there. 
   //Paste them directly into the memory address of my variable incomingRobotState.
   memcpy(&incomingRobotState, incomingData, sizeof(RobotState_t));
+  //float items = sscanf(msg, "x=%2f,y=%2f,z=%2f,q=%hhu,d_s=%2f", &odom_msg.x, &odom_msg.y, &odom_msg.z);
   
   // Update the global variable with REAL data later
   current_sonar_dist = incomingRobotState.sonar_dist;
@@ -201,7 +204,7 @@ void loop() {
   sonar_msg.data = current_sonar_dist;
   rcl_publish(&publisher, &sonar_msg, NULL);
 
-  // Publish Position
+  // Publish Position to ROS
   rcl_publish(&odom_publisher, &odom_msg, NULL);
 
   // Process ROS callbacks (Check for new cmd_vel)
