@@ -1,0 +1,22 @@
+typedef struct {
+  float x;
+  float y;
+  float z;
+  float sonar_dist;
+  int quality;
+} RobotState_t;
+
+// Create a variable to hold the data
+RobotState_t myRobotState;
+
+
+// Pretend these are your sensor readings
+myRobotState.x = 1.2;
+myRobotState.y = 3.4;
+myRobotState.z = 0.0;
+myRobotState.sonar_dist = 45.2;
+myRobotState.quality = 100;
+
+// Notice the (uint8_t *) &myRobotState
+// This tells ESP-NOW to grab the raw memory bytes of the struct and send them.
+esp_now_send(bridgeMAC, (uint8_t *) &myRobotState, sizeof(myRobotState));
