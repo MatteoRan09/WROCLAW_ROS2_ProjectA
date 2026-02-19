@@ -56,8 +56,8 @@ class GoToBeaconOdom(Node):
         self.declare_parameter("k_theta", 1.8)          # Angular speed control gain
         self.declare_parameter("k_d", 0.8)              # Linear speed control gain
 
-        self.declare_parameter("v_max", 0.7)            # max linear speed (m/s)
-        self.declare_parameter("omega_max", 3.0)        # max angular speed (rad/s)
+        self.declare_parameter("v_max", 0.5)            # max linear speed (m/s)
+        self.declare_parameter("omega_max", 2.0)        # max angular speed (rad/s)
 
         self.declare_parameter("goal_tolerance", 0.25)  # m
         self.declare_parameter("theta_align_deg", 30.0) # deg, start driving when within this
@@ -90,6 +90,9 @@ class GoToBeaconOdom(Node):
         self.robot_theta_old = 0.0
         self.odom_counter = 0
 
+        self.first_reading = True
+        self.heading_initialized = False
+
         # -------- target pos
         self.tx = 2
         self.ty = 5
@@ -106,19 +109,28 @@ class GoToBeaconOdom(Node):
         )
 
     def on_odom(self, msg: Point32) -> None:
-        print("odometry being done")
-        print(self.odom_counter)
-        if self.odom_counter >= 10:
-            print("updating old pos")
-            self.robot_theta = generate_angle(self.robot_x, self.robot_y, self.robot_x_old, self.robot_y_old)
-            self.robot_x_old = self.robot_x
-            self.robot_y_old = self.robot_y
-            self.robot_theta_old = self.robot_theta
-            self.odom_counter = 0
-
-        self.odom_counter += 1
         self.robot_x = msg.x
         self.robot_y = msg.y
+        
+        # Grab the very first position when the script starts
+        if self.first_reading:
+            self.robot_x_old = self.robot_x
+            self.robot_y_old = self.robot_y
+            self.first_reading = False
+            return
+
+        # Calculate exactly how far we have physically moved
+        dx = self.robot_x - self.robot_x_old
+        dy = self.robot_y - self.robot_y_old
+        distance_moved = math.hypot(dx, dy)
+
+        # THE FIX: Only calculate a new angle if we have moved more than 15cm!
+        # This completely ignores sensor noise when standing still.
+        if distance_moved > 0.15: 
+            self.robot_theta = math.atan2(dy, dx)
+            self.robot_x_old = self.robot_x
+            self.robot_y_old = self.robot_y
+            self.heading_initialized = True
 
 
         #q = msg.pose.pose.orientation
@@ -140,6 +152,17 @@ class GoToBeaconOdom(Node):
         # Need at least one beacon pose + odom update
         # if self.odom_time is None:
         #     return
+
+        # --- THE BLIND START ----
+        # We MUST drive forward blindly for a moment to trigger the 15cm movement
+        # threshold in `on_odom` so we can calculate our initial heading!
+        if not self.heading_initialized:
+            self.get_logger().info("Driving blind to calculate initial heading...")
+            cmd = Twist()
+            cmd.linear.x = 0.25 # Drive forward slowly
+            cmd.angular.z = 0.0
+            self.cmd_pub.publish(cmd)
+            return
 
 
         # Robot pose 
@@ -178,14 +201,6 @@ class GoToBeaconOdom(Node):
         if d < slow_radius:
             v *= d / slow_radius
 
-        d_angle = math.sqrt((self.robot_x_old - self.robot_x)**2 + (self.robot_y_old - self.robot_y)**2)
-
-        if d_angle < 0.05 and abs(theta) < 0.06:
-            print("go forwared")
-            v = 0.2
-            omega = 0
-
-        
         # Publish Twist
         cmd = Twist()
         cmd.linear.x = float(v)
