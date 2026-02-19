@@ -1,9 +1,13 @@
 // ========== LIBRARIES ==========
 #include <Arduino.h>
 #include <math.h>
+
+// ESP NOW 
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <WiFi.h>
+
+//MICRO ROS
 #include <micro_ros_arduino.h>
 #include <rcl/rcl.h>
 #include <rcl/error_handling.h>
@@ -14,12 +18,16 @@
 #include <geometry_msgs/msg/point32.h>
 
 // NOT ME - ESP 1 reads sensors (x, y, z, sonar, quality), packs them into a struct, and sends via ESP-NOW to the Bridge.
-// I receive the packet and publishe it to ROS 2 topics (/odom or /sonar)
+// I receive the packet and publish it to ROS 2 topics (/odom or /sonar)
 // NOT ME - ROS 2 Navigation calculates velocity commands (Twist message: linear X, angular Z).
 // I need to subscribe to /cmd_vel to access x linear, z angular data from ROS
 // Pack it into a struct and send it via ESP-NOW to ESP 1.
 // NOT ME - ESP 1 receives the ESP-NOW packet, parses the velocities, and drives the motors.
 
+// ========== FUNCTION PROTOTYPES esp ==========
+void OnDataSent(const wifi_tx_info_t* info, esp_now_send_status_t status);
+void OnDataRecv(const esp_now_recv_info* info, const unsigned char* incomingData, int len);
+esp_err_t addPeer(uint8_t* mac, esp_now_peer_info_t* peerInfo);
 
 
 // ========== CONFIG ==========
@@ -53,6 +61,7 @@ geometry_msgs__msg__Point32 odom_msg; // The message container (x,y,z)
 
 rcl_publisher_t publisher; 
 std_msgs__msg__Float32 sonar_msg; // The message sent to PC
+
 rcl_subscription_t subscriber;
 geometry_msgs__msg__Twist twist_msg; // The message received from PC
 
@@ -81,13 +90,12 @@ bool use_mock_data = true; // Will be set to FALSE when receiving data from ESP1
 void OnDataSent(const wifi_tx_info_t* info, esp_now_send_status_t status) {
   // Intentionally empty. 
   // Cannot use Serial.print because Micro-ROS owns the Serial port.
+  digitalWrite(2, HIGH);
 }
 
 // On Data Receive (From Robot)
 void OnDataRecv(const esp_now_recv_info* info, const unsigned char* incomingData, int len) {
   if (len != sizeof(RobotState_t)) return; // Safety check
-  float q;
-  float d_s;
  
   //Go to the memory address incomingData. Grab exactly sizeof(RobotState_t) bytes from there. 
   //Paste them directly into the memory address of my variable incomingRobotState.
@@ -109,7 +117,6 @@ void OnDataRecv(const esp_now_recv_info* info, const unsigned char* incomingData
 // When PC says "Move", we tell ESP-NOW "Move"
 void subscription_callback(const void * msgin) {
   const geometry_msgs__msg__Twist * msg = (const geometry_msgs__msg__Twist *)msgin;
-  digitalWrite(2, HIGH);
 
   // Pack the struct
   outgoingCommand.linear_x = msg->linear.x;
@@ -117,30 +124,37 @@ void subscription_callback(const void * msgin) {
 
   // Send via ESP-NOW to Robot
   esp_now_send(peerMAC, (uint8_t *) &outgoingCommand, sizeof(outgoingCommand));
+
+
+  // char string1[] = "Hello"; 
+  // esp_now_send(peerMAC, (uint8_t *) string1, strlen(string1));
 }
 
 // ========== SETUP ==========
 void setup() {
   // Init Micro-ROS Transports (Takes over Serial)
   Serial.begin(115200);
-  set_microros_transports(); 
+  pinMode(2, OUTPUT);
 
   // Init WiFi & ESP-NOW
-  WiFi.mode(WIFI_STA);
+  WiFi.begin();//WiFi.mode(WIFI_STA);
   esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
   
   if (esp_now_init() == ESP_OK) {
-    esp_now_register_recv_cb(OnDataRecv);
     esp_now_register_send_cb(OnDataSent);
+    esp_now_register_recv_cb(OnDataRecv);
     
     // Add Peer
     esp_now_peer_info_t peerInfo;
+    memset(&peerInfo, 0, sizeof(peerInfo)); // FIXED : Cleaning peerInfo before peer_addr
     memcpy(peerInfo.peer_addr, peerMAC, 6);
-    peerInfo.channel = 1;  // has to match WiFi channel
+    peerInfo.channel = 0;  // has to match WiFi channel
     peerInfo.encrypt = false;
     esp_now_add_peer(&peerInfo);
   }
 
+
+  set_microros_transports(); 
   // Init Micro-ROS Node
   allocator = rcl_get_default_allocator();
   rclc_support_init(&support, 0, NULL, &allocator);
@@ -151,7 +165,7 @@ void setup() {
     &odom_publisher,
     &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Point32),
-    "robot_pos" 
+    "/groupA/robot_pos" 
   );
 
   // Create Publisher for sonar (To PC)
@@ -159,7 +173,7 @@ void setup() {
     &publisher,
     &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-    "sonar_dist"
+    "/groupA/sonar_dist"
   );
 
   // Create Subscriber for twist (From PC)
@@ -167,7 +181,7 @@ void setup() {
     &subscriber,
     &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
-    "cmd_vel"
+    "/groupA/cmd_vel"
   );
 
   // Init Executor (Total handles = 1 subscriber)
@@ -178,6 +192,7 @@ void setup() {
 // ========== LOOP ==========
 void loop() {
   
+
   // --- MOCKING LOGIC (For Testing Only) ---
   if (use_mock_data) {
     // mock sonar
@@ -199,7 +214,7 @@ void loop() {
     if (angle > 6.28) angle = 0.0; // Reset after 2*PI (360 degrees)
   }
   // ----------------------------------------
-
+  
   // Publish current state to ROS
   sonar_msg.data = current_sonar_dist;
   rcl_publish(&publisher, &sonar_msg, NULL);
