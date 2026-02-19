@@ -1,5 +1,6 @@
 // ========== LIBRARIES ==========
 #include <Arduino.h>
+#include <math.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <WiFi.h>
@@ -105,12 +106,13 @@ void OnDataRecv(const esp_now_recv_info* info, const unsigned char* incomingData
 // When PC says "Move", we tell ESP-NOW "Move"
 void subscription_callback(const void * msgin) {
   const geometry_msgs__msg__Twist * msg = (const geometry_msgs__msg__Twist *)msgin;
+  digitalWrite(2, HIGH);
 
-  // 1. Pack the struct
+  // Pack the struct
   outgoingCommand.linear_x = msg->linear.x;
   outgoingCommand.angular_z = msg->angular.z;
 
-  // 2. Send via ESP-NOW to Robot
+  // Send via ESP-NOW to Robot
   esp_now_send(peerMAC, (uint8_t *) &outgoingCommand, sizeof(outgoingCommand));
 }
 
@@ -192,8 +194,6 @@ void loop() {
     // Increment angle for next loop (approx 1 full circle every 6 seconds at 100ms delay)
     angle += 0.1; 
     if (angle > 6.28) angle = 0.0; // Reset after 2*PI (360 degrees)
-  }
-  // ----------------------------------------
   }
   // ----------------------------------------
 
