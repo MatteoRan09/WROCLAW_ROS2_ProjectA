@@ -19,7 +19,8 @@
 
 // NOT ME - ESP 1 reads sensors (x, y, z, sonar, quality), packs them into a struct, and sends via ESP-NOW to the Bridge.
 // I receive the packet and publish it to ROS 2 topics (/robot_pos or /sonar)
-// NOT ME - ROS 2 Navigation calculates velocity commands (Twist message: linear X, angular Z).
+// NOT ME - Navigation python script calculates velocity commands
+// NOT ME - ROS2 sends it to bridge (Twist message: linear X, angular Z).
 // I need to subscribe to /cmd_vel to access x linear, z angular data from ROS
 // Pack it into a struct and send it via ESP-NOW to ESP 1.
 // NOT ME - ESP 1 receives the ESP-NOW packet, parses the velocities, and drives the motors.
